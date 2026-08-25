@@ -1015,7 +1015,7 @@ def generate_config(fingerprint, output_path, binary_path):
     if isinstance(languages, str):
         languages = [x.strip() for x in languages.split(",") if x.strip()]
     accept_language = str(values["headers.Accept-Language"])
-    user_agent = str(values.get("headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0"))
+    user_agent = str(values.get("headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0"))
     startup_url = str(values.get("startup_url", "https://duckduckgo.com"))
     parsed = urlparse(startup_url)
     if parsed.scheme not in ("http", "https"): startup_url = "https://duckduckgo.com"
@@ -2043,7 +2043,7 @@ class CamoufoxGUI(tk.Tk):
 
         identity, body = card(grid, "Browser Identity")
         identity.grid(row=5, column=0, columnspan=2, sticky="ew", pady=5)
-        row(body, "User-Agent", "headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0")
+        row(body, "User-Agent", "headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0")
 
         paths, body = card(grid, "Paths")
         paths.grid(row=6, column=0, columnspan=2, sticky="ew", pady=5)
