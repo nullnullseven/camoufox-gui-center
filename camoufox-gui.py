@@ -883,7 +883,7 @@ class FingerprintConfig:
         "latitude": 41.0082, "longitude": 28.9784,
         "navigator.language": "en-US", "navigator.languages": ["en-US", "en"],
         "headers.Accept-Language": "en-US,en;q=0.9",
-        "headers.User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+        "headers.User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0",
         "startup_url": "https://duckduckgo.com",
         "screen.width": 1700, "screen.height": 970,
         "screen.availWidth": 1700, "screen.availHeight": 940,
