@@ -1467,7 +1467,7 @@ class CamoufoxGUI(tk.Tk):
     # Setup
     # --------------------------------------------------------
     def page_setup(self):
-        self.page_header("Setup", "Prepare or update the Camoufox environment")
+        self.page_header("Setup | Update", "Prepare or update the Camoufox environment")
         container = tk.Frame(self.content, bg=COLORS["bg"])
         container.pack(fill="x", padx=32)
 
