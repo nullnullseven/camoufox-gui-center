@@ -719,11 +719,16 @@ LOCALE_OPTIONS = [
 ]
 
 TIMEZONE_OPTIONS = [
-    "UTC", "Europe/Istanbul", "Europe/London", "Europe/Berlin", "Europe/Paris",
-    "Europe/Moscow", "Europe/Warsaw", "Europe/Kyiv", "America/New_York",
-    "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto",
-    "America/Vancouver", "America/Sao_Paulo", "Asia/Dubai", "Asia/Tbilisi",
-    "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore", "Asia/Hong_Kong", "Australia/Sydney"
+    "UTC",
+    "Europe/Istanbul", "Europe/London", "Europe/Berlin", "Europe/Paris",
+    "Europe/Moscow", "Europe/Warsaw", "Europe/Kyiv", "Europe/Athens",
+    "Europe/Vienna", "Europe/Bucharest", "Europe/Madrid", "Europe/Rome",
+    "Europe/Amsterdam", "Europe/Stockholm", "Europe/Helsinki", "Europe/Prague",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Vancouver", "America/Sao_Paulo",
+    "Asia/Dubai", "Asia/Tbilisi", "Asia/Tokyo", "Asia/Seoul",
+    "Asia/Singapore", "Asia/Hong_Kong", "Asia/Bangkok", "Asia/Kolkata",
+    "Africa/Cairo", "Australia/Sydney", "Pacific/Auckland",
 ]
 
 # Locale -> (primary language, list of fallback languages)
@@ -740,17 +745,40 @@ LOCALE_TO_LANGUAGE = {
 
 # Timezone -> (latitude, longitude) for the "Detect coordinates" button
 TIMEZONE_COORDINATES = {
-    "Europe/Istanbul": (41.0082, 28.9784), "Europe/London": (51.5074, -0.1278),
-    "Europe/Berlin": (52.5200, 13.4050), "Europe/Paris": (48.8566, 2.3522),
-    "Europe/Moscow": (55.7558, 37.6173), "Europe/Warsaw": (52.2297, 21.0122),
-    "Europe/Kyiv": (50.4501, 30.5234), "America/New_York": (40.7128, -74.0060),
-    "America/Chicago": (41.8781, -87.6298), "America/Denver": (39.7392, -104.9903),
-    "America/Los_Angeles": (34.0522, -118.2437), "America/Toronto": (43.6532, -79.3832),
-    "America/Vancouver": (49.2827, -123.1207), "America/Sao_Paulo": (-23.5505, -46.6333),
-    "Asia/Dubai": (25.2048, 55.2708), "Asia/Tbilisi": (41.7151, 44.8271),
-    "Asia/Tokyo": (35.6762, 139.6503), "Asia/Seoul": (37.5665, 126.9780),
-    "Asia/Singapore": (1.3521, 103.8198), "Asia/Hong_Kong": (22.3193, 114.1694),
+    "Europe/Istanbul": (41.0082, 28.9784),
+    "Europe/London": (51.5074, -0.1278),
+    "Europe/Berlin": (52.5200, 13.4050),
+    "Europe/Paris": (48.8566, 2.3522),
+    "Europe/Moscow": (55.7558, 37.6173),
+    "Europe/Warsaw": (52.2297, 21.0122),
+    "Europe/Kyiv": (50.4501, 30.5234),
+    "Europe/Athens": (37.9838, 23.7275),
+    "Europe/Vienna": (48.2082, 16.3738),
+    "Europe/Bucharest": (44.4268, 26.1025),
+    "Europe/Madrid": (40.4168, -3.7038),
+    "Europe/Rome": (41.9028, 12.4964),
+    "Europe/Amsterdam": (52.3676, 4.9041),
+    "Europe/Stockholm": (59.3293, 18.0686),
+    "Europe/Helsinki": (60.1699, 24.9384),
+    "Europe/Prague": (50.0755, 14.4378),
+    "America/New_York": (40.7128, -74.0060),
+    "America/Chicago": (41.8781, -87.6298),
+    "America/Denver": (39.7392, -104.9903),
+    "America/Los_Angeles": (34.0522, -118.2437),
+    "America/Toronto": (43.6532, -79.3832),
+    "America/Vancouver": (49.2827, -123.1207),
+    "America/Sao_Paulo": (-23.5505, -46.6333),
+    "Asia/Dubai": (25.2048, 55.2708),
+    "Asia/Tbilisi": (41.7151, 44.8271),
+    "Asia/Tokyo": (35.6762, 139.6503),
+    "Asia/Seoul": (37.5665, 126.9780),
+    "Asia/Singapore": (1.3521, 103.8198),
+    "Asia/Hong_Kong": (22.3193, 114.1694),
+    "Asia/Bangkok": (13.7563, 100.5018),
+    "Asia/Kolkata": (22.5726, 88.3639),
+    "Africa/Cairo": (30.0444, 31.2357),
     "Australia/Sydney": (-33.8688, 151.2093),
+    "Pacific/Auckland": (-36.8485, 174.7633),
 }
 
 
@@ -1261,13 +1289,39 @@ class CamoufoxGUI(tk.Tk):
                   bordercolor=[("selected", COLORS["accent"]), ("!selected", COLORS["border"])])
 
         for name in ("Vertical", "Horizontal"):
-            style.configure(f"Dark.{name}.TScrollbar", background=COLORS["scrollbar"],
-                            troughcolor=COLORS["terminal"], bordercolor=COLORS["terminal"],
-                            arrowcolor=COLORS["bg"], darkcolor=COLORS["scrollbar"],
-                            lightcolor=COLORS["scrollbar"], relief="flat", borderwidth=0, arrowsize=12)
-            style.map(f"Dark.{name}.TScrollbar", background=[("active", COLORS["scrollbar_hover"]),
-                                                             ("pressed", COLORS["scrollbar_pressed"])],
-                      arrowcolor=[("active", COLORS["text"]), ("pressed", COLORS["text"])])
+            # Базовый стиль (используется Combobox dropdown и другими ttk-скроллбарами)
+            style.configure(f"{name}.TScrollbar",
+                            background=COLORS["scrollbar"],
+                            troughcolor=COLORS["terminal"],
+                            bordercolor=COLORS["terminal"],
+                            arrowcolor=COLORS["bg"],
+                            darkcolor=COLORS["scrollbar"],
+                            lightcolor=COLORS["scrollbar"],
+                            relief="flat",
+                            borderwidth=0,
+                            arrowsize=12)
+            style.map(f"{name}.TScrollbar",
+                      background=[("active", COLORS["scrollbar_hover"]),
+                                  ("pressed", COLORS["scrollbar_pressed"])],
+                      arrowcolor=[("active", COLORS["text"]),
+                                  ("pressed", COLORS["text"])])
+
+            # Явный Dark-стиль (для логов, fingerprint canvas и т.д.)
+            style.configure(f"Dark.{name}.TScrollbar",
+                            background=COLORS["scrollbar"],
+                            troughcolor=COLORS["terminal"],
+                            bordercolor=COLORS["terminal"],
+                            arrowcolor=COLORS["bg"],
+                            darkcolor=COLORS["scrollbar"],
+                            lightcolor=COLORS["scrollbar"],
+                            relief="flat",
+                            borderwidth=0,
+                            arrowsize=12)
+            style.map(f"Dark.{name}.TScrollbar",
+                      background=[("active", COLORS["scrollbar_hover"]),
+                                  ("pressed", COLORS["scrollbar_pressed"])],
+                      arrowcolor=[("active", COLORS["text"]),
+                                  ("pressed", COLORS["text"])])
 
     # --------------------------------------------------------
     # Layout
