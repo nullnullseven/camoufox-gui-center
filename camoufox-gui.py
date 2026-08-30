@@ -42,6 +42,7 @@ import threading
 import time
 import tkinter as tk
 import json
+import random
 from pathlib import Path
 from tkinter import ttk, filedialog, messagebox
 from tkinter import font as tkfont
@@ -2020,16 +2021,11 @@ class CamoufoxGUI(tk.Tk):
 
         path = expand_path(path_str)
 
+        # ——— Draft mode: create a profile from scratch" ———
         if self.draft_mode:
-            self.draft_mode = False
-            self.active_profile_name = None
-            self.profile_name_entry.delete(0, tk.END)
-            self.profile_path_entry.delete(0, tk.END)
-            self.profile_var.set("")
-            if hasattr(self, "profile_list"):
-                self.profile_list.selection_clear(0, tk.END)
-            self.log("[PROFILE] Draft discarded.")
-            return
+            if new_name in self.profiles or (DEFAULT_PROFILES / new_name).exists():
+                messagebox.showwarning("Name conflict", f"Profile '{new_name}' already exists.")
+                return
 
             new_dir = DEFAULT_PROFILES / new_name
             try:
@@ -2052,6 +2048,7 @@ class CamoufoxGUI(tk.Tk):
             self.log(f"[PROFILE] Created: {new_name}")
             return
 
+        # ——— Regular save / rename of an existing one. ———
         old_name = self.active_profile_name
         if not old_name:
             messagebox.showwarning("No profile", "Select a profile first or create a new one.")
@@ -2379,6 +2376,7 @@ class CamoufoxGUI(tk.Tk):
         actions = tk.Frame(inner, bg=COLORS["bg"])
         actions.pack(fill="x", padx=16, pady=(6, 14))
         self.rbutton(actions, text="Reset", command=self.reset_fingerprint).pack(side="left")
+        self.rbutton(actions, text="Randomize", command=self.randomize_fingerprint).pack(side="left", padx=(8, 0))
 
         bind_mousewheel_recursive(canvas)
         bind_mousewheel_recursive(inner)
@@ -2475,6 +2473,98 @@ class CamoufoxGUI(tk.Tk):
         profile.fingerprint = FingerprintConfig()
         profile.fingerprint.profile_dir = str(profile.dir)
         self._sync_simple_from_fingerprint()
+
+    def randomize_fingerprint(self):
+        if not self.active_profile_name or not hasattr(self, "fp_vars"):
+            messagebox.showwarning("No profile", "Open a profile fingerprint first.")
+            return
+
+        # --- OS ---
+        os_choice = random.choice(OS_OPTIONS)
+
+        # --- Locale + languages ---
+        locale = random.choice(LOCALE_OPTIONS)
+        lang_data = LOCALE_TO_LANGUAGE.get(locale, ("en-US", ["en-US", "en"]))
+        language, languages = lang_data
+        accept_language = ",".join(
+            [f"{languages[0]};q=1.0"] + [f"{lang};q=0.9" for lang in languages[1:]]
+        )
+
+        # --- Timezone + coordinates ---
+        timezone = random.choice(TIMEZONE_OPTIONS)
+        if timezone in TIMEZONE_COORDINATES:
+            lat, lon = TIMEZONE_COORDINATES[timezone]
+            lat = round(lat + random.uniform(-0.25, 0.25), 4)
+            lon = round(lon + random.uniform(-0.25, 0.25), 4)
+        else:
+            lat, lon = 0.0, 0.0
+
+        # --- Hardware ---
+        hw = random.choice([2, 4, 6, 8, 12, 16])
+
+        # --- Screen & Window ---
+        screens = [
+            (1920, 1080, 1920, 1040),
+            (2560, 1440, 2560, 1400),
+            (1366, 768, 1366, 728),
+            (1536, 864, 1536, 824),
+            (1440, 900, 1440, 860),
+            (1680, 1050, 1680, 1010),
+            (1280, 800, 1280, 760),
+            (1700, 970, 1700, 940),
+            (1600, 900, 1600, 860),
+            (2560, 1080, 2560, 1040),
+        ]
+        sw, sh, aw, ah = random.choice(screens)
+        ww = sw - random.randint(0, 48)
+        wh = sh - random.randint(30, 90)
+
+        # --- User-Agent for OS ---
+        uas = {
+            "windows": [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            ],
+            "macos": [
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:135.0) Gecko/20100101 Firefox/135.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:134.0) Gecko/20100101 Firefox/134.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 12.7; rv:133.0) Gecko/20100101 Firefox/133.0",
+            ],
+            "linux": [
+                "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+                "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            ],
+        }
+        ua = random.choice(uas.get(os_choice, uas["windows"]))
+
+        mapping = {
+            "os": os_choice,
+            "locale": locale,
+            "timezone": timezone,
+            "latitude": str(lat),
+            "longitude": str(lon),
+            "navigator.language": language,
+            "navigator.languages": ", ".join(languages),
+            "headers.Accept-Language": accept_language,
+            "navigator.hardwareConcurrency": str(hw),
+            "screen.width": str(sw),
+            "screen.height": str(sh),
+            "screen.availWidth": str(aw),
+            "screen.availHeight": str(ah),
+            "screen.colorDepth": "24",
+            "screen.pixelDepth": "24",
+            "window.width": str(ww),
+            "window.height": str(wh),
+            "headers.User-Agent": ua,
+        }
+
+        for key, value in mapping.items():
+            if key in self.fp_vars:
+                self.fp_vars[key].set(value)
+
+        self.log(f"[FINGERPRINT] Randomized values for {self.active_profile_name}")
 
     def save_fingerprint(self):
         """Read all Simple-mode widgets and persist them to the profile."""
