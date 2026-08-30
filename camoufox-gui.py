@@ -2522,19 +2522,19 @@ class CamoufoxGUI(tk.Tk):
         # --- User-Agent for OS ---
         uas = {
             "windows": [
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/152.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/153.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/154.0",
             ],
             "macos": [
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:135.0) Gecko/20100101 Firefox/135.0",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:134.0) Gecko/20100101 Firefox/134.0",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 12.7; rv:133.0) Gecko/20100101 Firefox/133.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:135.0) Gecko/20100101 Firefox/152.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:134.0) Gecko/20100101 Firefox/153.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 12.7; rv:133.0) Gecko/20100101 Firefox/154.0",
             ],
             "linux": [
-                "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
-                "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0",
-                "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/152.0",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/153.0",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/154.0",
             ],
         }
         ua = random.choice(uas.get(os_choice, uas["windows"]))
