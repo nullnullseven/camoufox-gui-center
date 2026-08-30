@@ -1209,6 +1209,7 @@ class CamoufoxGUI(tk.Tk):
         # Multi-profile state
         self.profiles = {}                  # name -> Profile
         self.active_profile_name = None
+        self.draft_mode = False
         self.process_managers = {}          # name -> ProcessManager (one per running profile)
 
         # Tk variables bound to UI widgets
@@ -1724,25 +1725,38 @@ class CamoufoxGUI(tk.Tk):
             self.refresh_profiles_list()
 
     def refresh_profiles_list(self):
-        """Repopulate the listbox from self.profiles."""
-        if not hasattr(self, "profile_list"): return
+        if not hasattr(self, "profile_list"):
+            return
+
         self.profile_list.delete(0, tk.END)
         sorted_names = sorted(self.profiles.keys())
-        for name in sorted_names:
-            self.profile_list.insert(tk.END, name)
+        running = {name for name, pm in self.process_managers.items() if pm.running}
 
-        if self.active_profile_name in sorted_names:
+        for name in sorted_names:
+            if name in running:
+                display = f"●  {name}"
+            else:
+                display = f"   {name}"
+            self.profile_list.insert(tk.END, display)
+
+        if self.active_profile_name and self.active_profile_name in sorted_names:
             idx = sorted_names.index(self.active_profile_name)
             self.profile_list.selection_set(idx)
             self.profile_list.see(idx)
             self.on_profile_select()
 
     def on_profile_select(self, event=None):
-        """Update the form fields when the user clicks a profile in the list."""
-        if not hasattr(self, "profile_list"): return
+        if not hasattr(self, "profile_list"):
+            return
         selection = self.profile_list.curselection()
-        if not selection: return
-        name = self.profile_list.get(selection[0])
+        if not selection:
+            return
+
+        self.draft_mode = False
+
+        raw = self.profile_list.get(selection[0])
+        name = raw.lstrip("● ").strip()
+
         self.active_profile_name = name
         self.profile_var.set(name)
 
@@ -1753,37 +1767,221 @@ class CamoufoxGUI(tk.Tk):
         self.profile_path_entry.insert(0, profile.fingerprint.profile_dir)
 
     def new_profile(self):
-        """Create a brand-new profile with a unique name and select it."""
+        self.draft_mode = True
+        self.active_profile_name = None
+
         base = "New Profile"
         name = base
         counter = 1
         while name in self.profiles or (DEFAULT_PROFILES / name).exists():
             counter += 1
             name = f"{base} {counter}"
-        profile = Profile(name, DEFAULT_PROFILES)
-        self.profiles[name] = profile
-        self.active_profile_name = name
-        self.profile_var.set(name)
-        self.refresh_profiles_list()
-        self.log(f"[PROFILE] Created new profile: {name}")
+
+        self.profile_name_entry.delete(0, tk.END)
+        self.profile_name_entry.insert(0, name)
+
+        suggested_path = str(DEFAULT_PROFILES / name)
+        self.profile_path_entry.delete(0, tk.END)
+        self.profile_path_entry.insert(0, suggested_path)
+
+        if hasattr(self, "profile_list"):
+            self.profile_list.selection_clear(0, tk.END)
+
+        self.profile_var.set("(draft)")
+        self.log("[PROFILE] New profile draft. Enter your details and click Save Profile.")
 
     def duplicate_profile(self):
+        if getattr(self, "draft_mode", False):
+            messagebox.showinfo("Draft", "First, save or cancel the draft.")
+            return
+
         source_name = self.active_profile_name
-        if not source_name: return
+        if not source_name:
+            messagebox.showwarning("No profile", "Select a profile to duplicate.")
+            return
+
         source = self.profiles[source_name]
-        target_name = f"{source_name} Copy"
-        target_dir = DEFAULT_PROFILES / target_name
-        index = 2
-        while target_dir.exists():
-            target_name = f"{source_name} Copy {index}"
-            target_dir = DEFAULT_PROFILES / target_name
-            index += 1
+        src_dir = source.dir
+        src_browser = expand_path(source.fingerprint.profile_dir)
+
         try:
-            shutil.copytree(source.dir, target_dir)
+            is_external = (
+                src_browser.resolve() != src_dir.resolve()
+                and not str(src_browser.resolve()).startswith(str(src_dir.resolve()) + os.sep)
+            )
+        except Exception:
+            is_external = True
+
+        base = f"{source_name} Copy"
+        suggested = base
+        index = 2
+        while suggested in self.profiles or (DEFAULT_PROFILES / suggested).exists():
+            suggested = f"{source_name} Copy {index}"
+            index += 1
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Duplicate Profile")
+        dialog.configure(bg=COLORS["panel"])
+        dialog.minsize(400, 220)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+
+        dialog.withdraw()
+
+        result = {"name": None, "copy_browser": False}
+
+        tk.Label(dialog, text="New profile name:", bg=COLORS["panel"],
+                 fg=COLORS["muted"], font=FONT).pack(anchor="w", padx=20, pady=(18, 4))
+
+        name_var = tk.StringVar(value=suggested)
+        name_entry = ttk.Entry(dialog, textvariable=name_var)
+        name_entry.pack(fill="x", padx=20)
+
+        copy_var = tk.BooleanVar(value=False)
+
+        if is_external:
+            cb = tk.Checkbutton(
+                dialog,
+                text="Also copy browser data (cookies, storage, cache…)",
+                variable=copy_var,
+                bg=COLORS["panel"],
+                fg=COLORS["text"],
+                selectcolor=COLORS["panel2"],
+                activebackground=COLORS["panel"],
+                activeforeground=COLORS["text"],
+                font=FONT,
+                cursor="hand2"
+            )
+            cb.pack(anchor="w", padx=20, pady=(14, 2))
+
+            tk.Label(
+                dialog,
+                text=f"Current browser data:\n{src_browser}",
+                bg=COLORS["panel"],
+                fg=COLORS["muted"],
+                justify="left",
+                wraplength=410,
+                font=FONT
+            ).pack(anchor="w", padx=20, pady=(2, 0))
+        else:
+            tk.Label(
+                dialog,
+                text="Browser data is inside the profile folder — it will be copied automatically.",
+                bg=COLORS["panel"],
+                fg=COLORS["muted"],
+                wraplength=410,
+                font=FONT
+            ).pack(anchor="w", padx=20, pady=(14, 0))
+
+        def on_ok():
+            name = name_var.get().strip()
+            error = self.validate_profile_name(name)
+            if error:
+                messagebox.showwarning("Invalid name", error, parent=dialog)
+                return
+            if name in self.profiles or (DEFAULT_PROFILES / name).exists():
+                messagebox.showwarning("Name conflict", f"Profile '{name}' already exists.", parent=dialog)
+                return
+            result["name"] = name
+            result["copy_browser"] = bool(copy_var.get())
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg=COLORS["panel"])
+        btn_frame.pack(fill="x", padx=20, pady=18)
+
+        tk.Button(
+            btn_frame, text="Cancel", command=on_cancel,
+            bg=COLORS["panel2"], fg=COLORS["text"],
+            activebackground=COLORS["panel3"], activeforeground=COLORS["text"],
+            relief="flat", padx=14, pady=5, cursor="hand2", font=FONT
+        ).pack(side="right", padx=(8, 0))
+
+        tk.Button(
+            btn_frame, text="Duplicate", command=on_ok,
+            bg=COLORS["accent2"], fg="white",
+            activebackground=COLORS["accent"], activeforeground="white",
+            relief="flat", padx=14, pady=5, cursor="hand2", font=FONT
+        ).pack(side="right")
+
+        dialog.bind("<Return>", lambda e: on_ok())
+        dialog.bind("<Escape>", lambda e: on_cancel())
+        dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+
+        dialog.update_idletasks()
+        width = 460
+        height = 260
+        x = self.winfo_rootx() + (self.winfo_width() - width) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+
+        dialog.deiconify()
+        dialog.lift()
+        dialog.focus_force()
+        name_entry.focus_set()
+        name_entry.select_range(0, tk.END)
+
+        def set_grab():
+            try:
+                if dialog.winfo_exists():
+                    dialog.grab_set()
+            except tk.TclError:
+                dialog.after(50, set_grab)
+
+        dialog.after(50, set_grab)
+
+        self.wait_window(dialog)
+
+        if not result["name"]:
+            return
+
+        target_name = result["name"]
+        target_dir = DEFAULT_PROFILES / target_name
+
+        try:
+            shutil.copytree(src_dir, target_dir)
+
+            new_profile = Profile(target_name, DEFAULT_PROFILES)
+
+            if is_external and result["copy_browser"]:
+                dst_browser = target_dir / "browser-data"
+                if dst_browser.exists():
+                    shutil.rmtree(dst_browser)
+                shutil.copytree(
+                    src_browser,
+                    dst_browser,
+                    symlinks=True,
+                    ignore_dangling_symlinks=True,
+                )
+                new_profile.fingerprint.profile_dir = str(dst_browser)
+            elif not is_external:
+                try:
+                    if str(src_browser.resolve()).startswith(str(src_dir.resolve())):
+                        relative = src_browser.resolve().relative_to(src_dir.resolve())
+                        new_profile.fingerprint.profile_dir = str(target_dir / relative)
+                    else:
+                        new_profile.fingerprint.profile_dir = str(target_dir)
+                except Exception:
+                    new_profile.fingerprint.profile_dir = str(target_dir)
+
+            new_profile.save_fp()
+            self.profiles[target_name] = new_profile
+
             self.refresh_profiles()
-            self.log(f"[PROFILE] Duplicated: {source_name} -> {target_name}")
+            self.active_profile_name = target_name
+            self.profile_var.set(target_name)
+            self.refresh_profiles_list()
+
+            self.log(f"[PROFILE] Duplicated: {source_name} → {target_name}")
         except Exception as exc:
             messagebox.showerror("Profile error", str(exc))
+            if target_dir.exists():
+                try:
+                    shutil.rmtree(target_dir)
+                except Exception:
+                    pass
 
     def delete_profile(self):
         name = self.active_profile_name
@@ -1809,22 +2007,56 @@ class CamoufoxGUI(tk.Tk):
             self.profile_path_entry.insert(0, directory)
 
     def save_profile(self):
-        """
-        Persist the current profile.
-        - If the name changed, rename the profile folder on disk.
-        - Regenerate fingerprint.json and camoufox-config.py.
-        """
-        old_name = self.active_profile_name
         new_name = self.profile_name_entry.get().strip()
         path_str = self.profile_path_entry.get().strip()
 
-        if not new_name:
-            messagebox.showwarning("Invalid profile", "Enter a profile name.")
+        error = self.validate_profile_name(new_name)
+        if error:
+            messagebox.showwarning("Invalid name", error)
             return
+
         if not path_str:
             path_str = str(DEFAULT_PROFILES / new_name)
 
-        # Conflict check
+        path = expand_path(path_str)
+
+        if self.draft_mode:
+            self.draft_mode = False
+            self.active_profile_name = None
+            self.profile_name_entry.delete(0, tk.END)
+            self.profile_path_entry.delete(0, tk.END)
+            self.profile_var.set("")
+            if hasattr(self, "profile_list"):
+                self.profile_list.selection_clear(0, tk.END)
+            self.log("[PROFILE] Draft discarded.")
+            return
+
+            new_dir = DEFAULT_PROFILES / new_name
+            try:
+                new_dir.mkdir(parents=True, exist_ok=True)
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                messagebox.showerror("Create error", str(exc))
+                return
+
+            profile = Profile(new_name, DEFAULT_PROFILES)
+            profile.fingerprint.profile_dir = str(path)
+            profile.save_fp()
+
+            self.profiles[new_name] = profile
+            self.draft_mode = False
+            self.active_profile_name = new_name
+            self.profile_var.set(new_name)
+
+            self.refresh_profiles_list()
+            self.log(f"[PROFILE] Created: {new_name}")
+            return
+
+        old_name = self.active_profile_name
+        if not old_name:
+            messagebox.showwarning("No profile", "Select a profile first or create a new one.")
+            return
+
         if new_name != old_name and (new_name in self.profiles or (DEFAULT_PROFILES / new_name).exists()):
             messagebox.showwarning("Name conflict", f"Profile '{new_name}' already exists.")
             return
@@ -1832,7 +2064,6 @@ class CamoufoxGUI(tk.Tk):
         old_dir = DEFAULT_PROFILES / old_name
         new_dir = DEFAULT_PROFILES / new_name
 
-        # Capture old fingerprint path before we mutate anything
         old_profile = self.profiles.get(old_name)
         old_fp_dir = None
         if old_profile:
@@ -1841,9 +2072,8 @@ class CamoufoxGUI(tk.Tk):
             except Exception:
                 old_fp_dir = None
 
-        user_path = expand_path(path_str)
+        user_path = path
 
-        # Rename the profile folder if the name changed
         if old_name != new_name:
             if old_dir.exists():
                 try:
@@ -1856,7 +2086,6 @@ class CamoufoxGUI(tk.Tk):
         else:
             new_dir.mkdir(parents=True, exist_ok=True)
 
-        # If the browser-data path was the old CCC folder itself, it has moved → update it
         if (old_name != new_name
                 and old_fp_dir is not None
                 and old_fp_dir.resolve() == old_dir.resolve()
@@ -1864,12 +2093,18 @@ class CamoufoxGUI(tk.Tk):
             final_path = new_dir
         else:
             final_path = user_path
-        final_path.mkdir(parents=True, exist_ok=True)
 
-        # Rebuild profiles from disk
+        try:
+            final_path.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            messagebox.showerror("Path error", str(exc))
+            return
+
         self.refresh_profiles()
+
         if new_name not in self.profiles:
             self.profiles[new_name] = Profile(new_name, DEFAULT_PROFILES)
+
         self.active_profile_name = new_name
         self.profile_var.set(new_name)
 
@@ -1877,10 +2112,10 @@ class CamoufoxGUI(tk.Tk):
         profile.fingerprint.profile_dir = str(final_path)
         profile.save_fp()
 
-        # Keep the form in sync
         self.profile_path_entry.delete(0, tk.END)
         self.profile_path_entry.insert(0, str(final_path))
         self.refresh_profiles_list()
+
         self.log(f"[PROFILE] Saved: {new_name}")
 
     def edit_fingerprint(self):
@@ -1903,42 +2138,68 @@ class CamoufoxGUI(tk.Tk):
 
         tabs_bar = tk.Frame(self.content, bg=COLORS["bg"])
         tabs_bar.pack(fill="x", padx=32, pady=(0, 12))
-        self.fp_tab_buttons = {}
+
+        self.fp_current_tab = "simple"
 
         def switch_tab(name):
-            for key, btn in self.fp_tab_buttons.items():
-                if key == name:
-                    btn.itemconfig(btn._rect, fill=COLORS["panel2"])
-                    btn.itemconfig(btn._label, fill=COLORS["text"])
-                else:
-                    btn.itemconfig(btn._rect, fill=COLORS["panel"])
-                    btn.itemconfig(btn._label, fill=COLORS["muted"])
+            profile = self.profiles[self.active_profile_name]
+            self.fp_current_tab = name
+
             if name == "simple":
+                profile._load_fp()
+                self._sync_simple_from_fingerprint()
+
                 self.fp_advanced_frame.pack_forget()
                 self.fp_simple_frame.pack(fill="both", expand=True)
-                self._sync_simple_from_fingerprint()
+
+                btn_simple.itemconfig(btn_simple._rect, fill=COLORS["panel2"])
+                btn_simple.itemconfig(btn_simple._label, fill=COLORS["text"])
+                btn_advanced.itemconfig(btn_advanced._rect, fill=COLORS["panel"])
+                btn_advanced.itemconfig(btn_advanced._label, fill=COLORS["muted"])
             else:
+                self.load_raw_config()
+
                 self.fp_simple_frame.pack_forget()
                 self.fp_advanced_frame.pack(fill="both", expand=True)
-                self.load_raw_config()
+
+                btn_advanced.itemconfig(btn_advanced._rect, fill=COLORS["panel2"])
+                btn_advanced.itemconfig(btn_advanced._label, fill=COLORS["text"])
+                btn_simple.itemconfig(btn_simple._rect, fill=COLORS["panel"])
+                btn_simple.itemconfig(btn_simple._label, fill=COLORS["muted"])
+
+        def top_save():
+            if self.fp_current_tab == "simple":
+                self.save_fingerprint()
+            else:
+                self.save_raw_config()
 
         btn_simple = self.rbutton(tabs_bar, text="Simple", command=lambda: switch_tab("simple"))
         btn_simple.pack(side="left", padx=(24, 8))
-        self.fp_tab_buttons["simple"] = btn_simple
+
         btn_advanced = self.rbutton(tabs_bar, text="Advanced", command=lambda: switch_tab("advanced"))
         btn_advanced.pack(side="left", padx=(8, 0))
-        self.fp_tab_buttons["advanced"] = btn_advanced
-        btn_simple.itemconfig(btn_simple._rect, fill=COLORS["panel2"])
-        btn_simple.itemconfig(btn_simple._label, fill=COLORS["text"])
+
+        self.rbutton(
+            tabs_bar,
+            text="Save Configuration",
+            style="Accent.TButton",
+            command=top_save
+        ).pack(side="right", padx=(0, 8))
 
         content_wrap = tk.Frame(self.content, bg=COLORS["bg"])
         content_wrap.pack(fill="both", expand=True, padx=32, pady=(0, 25))
+
         self.fp_simple_frame = tk.Frame(content_wrap, bg=COLORS["bg"])
         self.fp_advanced_frame = tk.Frame(content_wrap, bg=COLORS["bg"])
 
         self.build_fingerprint_simple(self.fp_simple_frame)
         self.build_fingerprint_advanced(self.fp_advanced_frame)
         self.fp_simple_frame.pack(fill="both", expand=True)
+
+        btn_simple.itemconfig(btn_simple._rect, fill=COLORS["panel2"])
+        btn_simple.itemconfig(btn_simple._label, fill=COLORS["text"])
+        btn_advanced.itemconfig(btn_advanced._rect, fill=COLORS["panel"])
+        btn_advanced.itemconfig(btn_advanced._label, fill=COLORS["muted"])
 
         # "Back to Profiles" button, aligned with the Reset button above
         bottom_bar = tk.Frame(self.content, bg=COLORS["bg"])
@@ -2118,8 +2379,6 @@ class CamoufoxGUI(tk.Tk):
         actions = tk.Frame(inner, bg=COLORS["bg"])
         actions.pack(fill="x", padx=16, pady=(6, 14))
         self.rbutton(actions, text="Reset", command=self.reset_fingerprint).pack(side="left")
-        self.rbutton(actions, text="Save Configuration", style="Accent.TButton",
-                     command=self.save_fingerprint).pack(side="right")
 
         bind_mousewheel_recursive(canvas)
         bind_mousewheel_recursive(inner)
@@ -2129,8 +2388,15 @@ class CamoufoxGUI(tk.Tk):
     def build_fingerprint_advanced(self, parent):
         """Build the 'Advanced' fingerprint editor (raw Python source)."""
         profile = self.profiles[self.active_profile_name]
-        tk.Label(parent, text=f"Raw {profile.config_path.name}. Use this when you need full control.",
-                 bg=COLORS["bg"], fg=COLORS["muted"]).pack(anchor="w", padx=12, pady=(10, 8))
+        tk.Label(
+            parent,
+            text=f"Raw {profile.config_path.name}. Changes here are parsed back into Simple view when possible.\n"
+                 f"Custom code is preserved, but only recognized options (os, locale, proxy, window size и т.д.) round-trip fully.",
+            bg=COLORS["bg"],
+            fg=COLORS["muted"],
+            justify="left",
+            wraplength=900
+        ).pack(anchor="w", padx=12, pady=(10, 8))
 
         editor_frame = tk.Frame(parent, bg=COLORS["terminal"])
         editor_frame.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -2154,8 +2420,6 @@ class CamoufoxGUI(tk.Tk):
         buttons = tk.Frame(parent, bg=COLORS["bg"])
         buttons.pack(fill="x", padx=12, pady=(0, 12))
         self.rbutton(buttons, text="Reload", command=self.load_raw_config).pack(side="left")
-        self.rbutton(buttons, text="Save Raw Config", style="Accent.TButton",
-                     command=self.save_raw_config).pack(side="right")
 
     def load_raw_config(self):
         profile = self.profiles[self.active_profile_name]
@@ -2163,15 +2427,27 @@ class CamoufoxGUI(tk.Tk):
         self.raw_config_text.insert("1.0", read_text(profile.config_path))
 
     def save_raw_config(self):
-        """Save the raw editor text after validating Python syntax."""
         profile = self.profiles[self.active_profile_name]
         text = self.raw_config_text.get("1.0", tk.END)
-        try: ast.parse(text)
+        try:
+            ast.parse(text)
         except SyntaxError as exc:
             messagebox.showerror("Syntax error", str(exc))
             return
+
         write_text(profile.config_path, text.rstrip() + "\n")
+
+        try:
+            profile.fingerprint = FingerprintConfig()
+            profile.fingerprint.profile_dir = str(profile.dir)
+            profile.fingerprint.load(profile.config_path)
+
+            profile.save_fp()
+        except Exception as exc:
+            self.log(f"[CONFIG] Warning: could not fully sync fingerprint from raw config: {exc}")
+
         self.log(f"[CONFIG] Raw configuration saved for {self.active_profile_name}.")
+        messagebox.showinfo("Saved", "Raw configuration saved.\nRecognized options were synced to the Simple view.")
 
     def detect_coordinates(self):
         """Fill latitude/longitude from the selected timezone's preset."""
@@ -2260,9 +2536,11 @@ class CamoufoxGUI(tk.Tk):
         self.process_managers[name] = pm
         self.log(f"[LAUNCH] Starting {name}...")
         pm.start([str(python), str(profile.config_path)])
-
+        
         if hasattr(self, "sessions_frame"):
             self.refresh_sessions_ui()
+        if hasattr(self, "profile_list"):
+            self.refresh_profiles_list()
 
     def stop_active_profile(self):
         if not self.active_profile_name: return
@@ -2275,6 +2553,8 @@ class CamoufoxGUI(tk.Tk):
             del self.process_managers[name]
             if hasattr(self, "sessions_frame"):
                 self.refresh_sessions_ui()
+            if hasattr(self, "profile_list"):
+                self.refresh_profiles_list()
 
     def stop_all_processes(self):
         for name in list(self.process_managers.keys()):
@@ -2338,6 +2618,8 @@ class CamoufoxGUI(tk.Tk):
             self.log(f"[PROCESS] {name} has exited.")
             if hasattr(self, "sessions_frame"):
                 self.refresh_sessions_ui()
+        if dead and hasattr(self, "profile_list"):
+            self.refresh_profiles_list()
 
         if any(pm.running for pm in self.process_managers.values()):
             self.status_var.set("● Running")
@@ -2359,6 +2641,31 @@ class CamoufoxGUI(tk.Tk):
         entry = ttk.Entry(frame, textvariable=variable)
         entry.pack(fill="x")
         return entry
+
+    def validate_profile_name(self, name: str) -> str | None:
+        """Checks the profile name. Returns an error message or None if everything is OK"."""
+        name = name.strip()
+        if not name:
+            return "Profile name cannot be empty."
+        if len(name) > 80:
+            return "Profile name is too long (max 80 characters)."
+
+        forbidden = set('\\/:*?"<>|')
+        found = sorted(c for c in name if c in forbidden)
+        if found:
+            return f"Forbidden characters: {' '.join(repr(c) for c in found)}"
+
+        if name.startswith('.') or name.endswith('.'):
+            return "Profile name cannot start or end with a dot."
+
+        lower = name.lower()
+        reserved = {"con", "prn", "aux", "nul", "com1", "com2", "com3", "com4",
+                    "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2",
+                    "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"}
+        if lower in reserved:
+            return f"'{name}' is a reserved system name."
+
+        return None
 
     def rbutton(self, parent, text="", command=None, style=None, width=None, **kwargs):
         """Shortcut for creating a RoundedButton."""
