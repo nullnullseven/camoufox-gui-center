@@ -1391,6 +1391,7 @@ class CamoufoxGUI(tk.Tk):
     def page_dashboard(self):
         self.page_header("Dashboard", "Camoufox environment at a glance")
 
+        # --- Карточки: версия, канал, профиль, binary ---
         cards = tk.Frame(self.content, bg=COLORS["bg"])
         cards.pack(fill="x", padx=32)
         self.dashboard_card(cards, "CAMOUFOX", self.version_var, 0)
@@ -1398,27 +1399,9 @@ class CamoufoxGUI(tk.Tk):
         self.dashboard_card(cards, "ACTIVE PROFILE", self.profile_var, 2)
         self.dashboard_card(cards, "BINARY", tk.StringVar(value="Found" if find_binary() else "Not found"), 3)
 
-        actions = tk.Frame(self.content, bg=COLORS["bg"])
-        actions.pack(fill="x", padx=32, pady=28)
-        self.rbutton(actions, text="▶  Launch Active Profile", style="Accent.TButton",
-                     command=self.launch_active_profile).pack(side="left", padx=(0, 8))
-        self.rbutton(actions, text="⚙  Setup & Logs",
-                     command=lambda: self.show_page("setup")).pack(side="left", padx=8)
-        self.rbutton(actions, text="◉  Manage Profiles",
-                     command=lambda: self.show_page("profiles")).pack(side="left", padx=8)
-
-        # Running sessions panel
-        sessions_panel = tk.Frame(self.content, bg=COLORS["panel"])
-        sessions_panel.pack(fill="x", padx=32, pady=(0, 20))
-        tk.Label(sessions_panel, text="Running Sessions", bg=COLORS["panel"], fg=COLORS["text"],
-                 font=("TkDefaultFont", 12, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
-
-        self.sessions_frame = tk.Frame(sessions_panel, bg=COLORS["panel"])
-        self.sessions_frame.pack(fill="x", padx=20, pady=(0, 20))
-        self.refresh_sessions_ui()
-
+        # --- Environment сразу под карточками ---
         env_panel = tk.Frame(self.content, bg=COLORS["panel"])
-        env_panel.pack(fill="x", padx=32, pady=(0, 32))
+        env_panel.pack(fill="x", padx=32, pady=(20, 0))
         tk.Label(env_panel, text="Environment", bg=COLORS["panel"], fg=COLORS["text"],
                  font=("TkDefaultFont", 12, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
         self.environment_row(env_panel, "Python", sys.executable)
@@ -1426,9 +1409,36 @@ class CamoufoxGUI(tk.Tk):
         binary = find_binary()
         self.environment_row(env_panel, "Camoufox binary", str(binary) if binary else "Not found")
 
+        # --- Кнопки действий ---
+        actions = tk.Frame(self.content, bg=COLORS["bg"])
+        actions.pack(fill="x", padx=32, pady=28)
+        self.rbutton(actions, text="▶  Launch Active Profile", style="Accent.TButton",
+                     command=self.launch_active_profile).pack(side="left", padx=(0, 8))
+        self.rbutton(actions, text="⚙  Setup / Update",
+                     command=lambda: self.show_page("setup")).pack(side="left", padx=8)
+        self.rbutton(actions, text="◉  Manage Profiles",
+                     command=lambda: self.show_page("profiles")).pack(side="left", padx=8)
+
+        # --- Running Sessions внизу ---
+        sessions_panel = tk.Frame(self.content, bg=COLORS["panel"])
+        sessions_panel.pack(fill="x", padx=32, pady=(0, 32))
+        tk.Label(sessions_panel, text="Running Sessions", bg=COLORS["panel"], fg=COLORS["text"],
+                 font=("TkDefaultFont", 12, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
+
+        self.sessions_frame = tk.Frame(sessions_panel, bg=COLORS["panel"])
+        self.sessions_frame.pack(fill="x", padx=20, pady=(0, 20))
+        self.refresh_sessions_ui()
+
     def dashboard_card(self, parent, title, variable, column):
         card = tk.Frame(parent, bg=COLORS["panel"], height=105)
-        card.grid(row=0, column=column, sticky="nsew", padx=5)
+        # Крайние карточки без внешнего padx — края совпадают с Environment
+        if column == 0:
+            padx = (0, 5)
+        elif column == 3:
+            padx = (5, 0)
+        else:
+            padx = 5
+        card.grid(row=0, column=column, sticky="nsew", padx=padx)
         parent.grid_columnconfigure(column, weight=1)
         tk.Label(card, text=title, bg=COLORS["panel"], fg=COLORS["muted"],
                  font=("TkDefaultFont", 8, "bold")).pack(anchor="w", padx=16, pady=(16, 4))
@@ -2320,11 +2330,17 @@ class CamoufoxGUI(tk.Tk):
         combo_pair(body, [("OS", "os", OS_OPTIONS), ("Locale", "locale", LOCALE_OPTIONS)])
         combo_pair(body, [("Timezone", "timezone", TIMEZONE_OPTIONS),
                           ("CPU cores", "navigator.hardwareConcurrency", ["2", "4", "8", "16", "32"])])
-        self.rbutton(body, text="Detect coordinates from timezone", command=self.detect_coordinates).pack(anchor="w", pady=(4, 0))
 
         geo, body = card(grid, "Geolocation")
         geo.grid(row=2, column=1, sticky="nsew", padx=(4, 0), pady=5)
         pair_row(body, [("Latitude", "latitude", "41.0082", 12), ("Longitude", "longitude", "28.9784", 12)])
+
+        spacer = tk.Frame(body, bg=COLORS["panel"], height=14)
+        spacer.pack(fill="x")
+        spacer.pack_propagate(False)
+
+        self.rbutton(body, text="Detect coordinates from timezone",
+                     command=self.detect_coordinates).pack(anchor="w", pady=(2, 0))
 
         lang, body = card(grid, "Language")
         lang.grid(row=3, column=0, sticky="nsew", padx=(0, 4), pady=5)
