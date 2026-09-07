@@ -4,9 +4,8 @@ Install Python 3 dependencies:
 
 `python3.13-venv pip python3-pyqt5 python3-pyqt5.qtwebengine python3-tk`
 
+<img width="2303" height="1381" alt="2026-09-07-151522" src="https://github.com/user-attachments/assets/17cd8018-ebb7-4e68-84de-4e5e80a176b1" />
 
-<img width="1272" height="809" alt="screenshot-3914daf7" src="https://github.com/user-attachments/assets/391eb6c0-07e5-4385-ae07-ec5cff374669" />
+<img width="2303" height="1381" alt="2026-09-07-151615" src="https://github.com/user-attachments/assets/8624b7b9-56fb-4713-bf23-129ad68da922" />
 
-<img width="1271" height="1205" alt="screenshot-6c1eb46a" src="https://github.com/user-attachments/assets/680a50e5-8961-43d7-a3a4-e09197de3e62" />
-
-<img width="1273" height="1208" alt="screenshot-c8961ca9" src="https://github.com/user-attachments/assets/62a9226c-83a3-481b-bbd1-86128a44f0c3" />
+<img width="2303" height="1381" alt="2026-09-07-151636" src="https://github.com/user-attachments/assets/d5b5b26b-6312-437c-bb42-2d61f9fc4802" />
