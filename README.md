@@ -1,4 +1,4 @@
-Camoufox Control Center is a desktop GUI application built with Python and Tkinter designed to manage multiple Camoufox browser profiles, each with unique browser fingerprints. Original Camoufox: https://github.com/daijro/camoufox
+Camoufox Control Center is a desktop GUI application built with Python and Tkinter for managing multiple Camoufox browser profiles, each with its own unique fingerprint. On startup it automatically downloads and installs the latest Camoufox binary, sets up isolated runtime environments for every profile, and generates per-profile configuration files containing the fingerprint settings. Original Camoufox: https://github.com/daijro/camoufox
 
 Install Python 3 dependencies:
 
