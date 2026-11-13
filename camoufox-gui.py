@@ -65,7 +65,12 @@ DEFAULT_PROFILES = BASE_DIR / "profiles"
 
 # Camoufox stores its downloaded browser binary here
 CACHE_DIR = Path.home() / ".cache" / "camoufox"
+# Коэффициент масштаба интерфейса; уточняется при старте окна
+UI_SCALE = 1.0
 
+def S(px):
+    """Real pixels."""
+    return int(round(px * UI_SCALE))
 # ============================================================
 # Dark color palette
 # ============================================================
@@ -140,8 +145,8 @@ class DarkFileExplorer(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title(title)
-        self.geometry("850x580")
-        self.minsize(600, 400)
+        self.geometry(f"{S(850)}x{S(580)}")
+        self.minsize(S(600), S(400))
         self.configure(bg=COLORS["explorer_bg"])
 
         # Navigation state
@@ -1241,11 +1246,21 @@ class CamoufoxGUI(tk.Tk):
     """
 
     def __init__(self):
+        global UI_SCALE
         super().__init__()
+        try:
+            UI_SCALE = max(1.0, float(self.tk.call("tk", "scaling")) / (96 / 72))
+        except Exception:
+            UI_SCALE = 1.0
+
         self.title(APP_NAME)
-        self.geometry("1280x820")
-        self.minsize(1080, 700)
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w = min(S(1280), int(sw * 0.92))
+        h = min(S(820), int(sh * 0.92))
+        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+        self.minsize(min(S(1080), w), min(S(700), h))
         self.configure(bg=COLORS["bg"])
+        # ... дальше всё как было (self.log_queue = ... и т.д.)
 
         # Log plumbing: worker threads push into log_queue,
         # the main loop drains it into the Text widget every 100 ms.
@@ -1376,7 +1391,12 @@ class CamoufoxGUI(tk.Tk):
     # --------------------------------------------------------
     def build_layout(self):
         """Build the sidebar + content area skeleton."""
-        self.sidebar = tk.Frame(self, bg=COLORS["panel"], width=220)
+        title_font = tkfont.Font(font=("TkDefaultFont", 17, "bold"))
+        nav_font = tkfont.Font(font=FONT)
+        side_w = max(S(220),
+                 title_font.measure("CAMOUFOX") + 50,
+                 nav_font.measure("⚙   Setup & Logs") + 60)
+        self.sidebar = tk.Frame(self, bg=COLORS["panel"], width=side_w)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
@@ -1476,7 +1496,7 @@ class CamoufoxGUI(tk.Tk):
         self.refresh_sessions_ui()
 
     def dashboard_card(self, parent, title, variable, column):
-        card = tk.Frame(parent, bg=COLORS["panel"], height=105)
+        card = tk.Frame(parent, bg=COLORS["panel"], height=S(105))
         # Крайние карточки без внешнего padx — края совпадают с Environment
         if column == 0:
             padx = (0, 5)
@@ -1711,7 +1731,7 @@ class CamoufoxGUI(tk.Tk):
         outer.pack(fill="both", expand=True, padx=32, pady=(0, 30))
 
         # --- Left panel: profile list + 3 management buttons ---
-        left = tk.Frame(outer, bg=COLORS["panel"], width=320)
+        left = tk.Frame(outer, bg=COLORS["panel"], width=S(320))
         left.pack(side="left", fill="y")
         left.pack_propagate(False)
 
@@ -1879,7 +1899,7 @@ class CamoufoxGUI(tk.Tk):
         dialog = tk.Toplevel(self)
         dialog.title("Duplicate Profile")
         dialog.configure(bg=COLORS["panel"])
-        dialog.minsize(400, 220)
+        dialog.minsize(S(400), S(220))
         dialog.resizable(False, False)
         dialog.transient(self)
 
@@ -1917,7 +1937,7 @@ class CamoufoxGUI(tk.Tk):
                 bg=COLORS["panel"],
                 fg=COLORS["muted"],
                 justify="left",
-                wraplength=410,
+                wraplength=S(410),
                 font=FONT
             ).pack(anchor="w", padx=20, pady=(2, 0))
         else:
@@ -1926,7 +1946,7 @@ class CamoufoxGUI(tk.Tk):
                 text="Browser data is inside the profile folder — it will be copied automatically.",
                 bg=COLORS["panel"],
                 fg=COLORS["muted"],
-                wraplength=410,
+                wraplength=S(410),
                 font=FONT
             ).pack(anchor="w", padx=20, pady=(14, 0))
 
@@ -1968,8 +1988,8 @@ class CamoufoxGUI(tk.Tk):
         dialog.protocol("WM_DELETE_WINDOW", on_cancel)
 
         dialog.update_idletasks()
-        width = 460
-        height = 260
+        width = S(460)
+        height = S(260)
         x = self.winfo_rootx() + (self.winfo_width() - width) // 2
         y = self.winfo_rooty() + (self.winfo_height() - height) // 2
         dialog.geometry(f"{width}x{height}+{x}+{y}")
@@ -2455,7 +2475,7 @@ class CamoufoxGUI(tk.Tk):
             bg=COLORS["bg"],
             fg=COLORS["muted"],
             justify="left",
-            wraplength=900
+            wraplength=S(900)
         ).pack(anchor="w", padx=12, pady=(10, 8))
 
         editor_frame = tk.Frame(parent, bg=COLORS["terminal"])
