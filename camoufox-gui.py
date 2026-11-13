@@ -1731,7 +1731,9 @@ class CamoufoxGUI(tk.Tk):
         outer.pack(fill="both", expand=True, padx=32, pady=(0, 30))
 
         # --- Left panel: profile list + 3 management buttons ---
-        left = tk.Frame(outer, bg=COLORS["panel"], width=S(320))
+        _bf = tkfont.Font(font=FONT)
+        _btn_w = sum(_bf.measure(t) + 32 for t in ("+ New", "Duplicate", "Delete")) + 60
+        left = tk.Frame(outer, bg=COLORS["panel"], width=max(S(460), _btn_w))
         left.pack(side="left", fill="y")
         left.pack_propagate(False)
 
