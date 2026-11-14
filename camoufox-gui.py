@@ -40,6 +40,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import tkinter as tk
 import json
 import random
@@ -65,7 +66,9 @@ DEFAULT_PROFILES = BASE_DIR / "profiles"
 
 # Camoufox stores its downloaded browser binary here
 CACHE_DIR = Path.home() / ".cache" / "camoufox"
-# Коэффициент масштаба интерфейса; уточняется при старте окна
+UPDATE_STATE = BASE_DIR / "update_check.json"
+RELEASES_API = "https://api.github.com/repos/daijro/camoufox/releases?per_page=15"
+# Interface scaling
 UI_SCALE = 1.0
 
 def S(px):
@@ -787,7 +790,38 @@ TIMEZONE_COORDINATES = {
     "Pacific/Auckland": (-36.8485, 174.7633),
 }
 
+REGIONS = [
+    ("en-US", "America/New_York"), ("en-US", "America/Chicago"),
+    ("en-US", "America/Denver"), ("en-US", "America/Los_Angeles"),
+    ("en-GB", "Europe/London"), ("de-DE", "Europe/Berlin"),
+    ("fr-FR", "Europe/Paris"), ("es-ES", "Europe/Madrid"),
+    ("it-IT", "Europe/Rome"), ("nl-NL", "Europe/Amsterdam"),
+    ("pl-PL", "Europe/Warsaw"), ("tr-TR", "Europe/Istanbul"),
+    ("pt-BR", "America/Sao_Paulo"), ("ja-JP", "Asia/Tokyo"),
+    ("ko-KR", "Asia/Seoul"), ("uk-UA", "Europe/Kyiv"),
+    ("ru-RU", "Europe/Moscow"),
+]
 
+SCREENS_BY_OS = {
+    "windows": [(1920, 1080, 1920, 1040), (1366, 768, 1366, 728), (1536, 864, 1536, 824),
+                (2560, 1440, 2560, 1400), (1600, 900, 1600, 860)],
+    "macos":   [(1440, 900, 1440, 875), (1512, 982, 1512, 957), (1728, 1117, 1728, 1092),
+                (1680, 1050, 1680, 1025), (2560, 1440, 2560, 1415)],
+    "linux":   [(1920, 1080, 1920, 1048), (2560, 1440, 2560, 1408),
+                (1366, 768, 1366, 736), (1600, 900, 1600, 868)],
+}
+CORES_BY_OS = {"windows": [4, 8, 12, 16], "macos": [8, 10, 12], "linux": [4, 8, 12, 16]}
+
+
+def accept_language_for(languages):
+    """Accept-Language Firefox style."""
+    q_table = {2: [0.5], 3: [0.7, 0.3], 4: [0.8, 0.5, 0.3]}
+    qs = q_table.get(len(languages), [])
+    parts = [languages[0]]
+    for i, lang in enumerate(languages[1:]):
+        q = qs[i] if i < len(qs) else max(0.1, round(0.9 - 0.2 * i, 1))
+        parts.append(f"{lang};q={q}")
+    return ",".join(parts)
 # ============================================================
 # Utility functions
 # ============================================================
@@ -846,7 +880,20 @@ def version_from_cache(channel="stable"):
     if versions: return sorted(versions)[-1]
     return None
 
-
+def fetch_latest_tag(channel="stable"):
+    """Newest release tag from GitHub for the channel, without the leading 'v'."""
+    req = urllib.request.Request(
+        RELEASES_API,
+        headers={"User-Agent": "CamoufoxControlCenter", "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        releases = json.load(r)
+    for rel in releases:
+        if rel.get("draft"):
+            continue
+        if channel == "stable" and rel.get("prerelease"):
+            continue
+        return str(rel.get("tag_name", "")).lstrip("v") or None
+    return None
 # ============================================================
 # Process Manager
 # ============================================================
@@ -924,8 +971,7 @@ class FingerprintConfig:
         "os": "windows", "locale": "en-US", "timezone": "Europe/Istanbul",
         "latitude": 41.0082, "longitude": 28.9784,
         "navigator.language": "en-US", "navigator.languages": ["en-US", "en"],
-        "headers.Accept-Language": "en-US,en;q=0.9",
-        "headers.User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0",
+        "headers.Accept-Language": "en-US,en;q=0.5",
         "startup_url": "https://duckduckgo.com",
         "screen.width": 1700, "screen.height": 970,
         "screen.availWidth": 1700, "screen.availHeight": 940,
@@ -1057,7 +1103,6 @@ def generate_config(fingerprint, output_path, binary_path):
     if isinstance(languages, str):
         languages = [x.strip() for x in languages.split(",") if x.strip()]
     accept_language = str(values["headers.Accept-Language"])
-    user_agent = str(values.get("headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0"))
     startup_url = str(values.get("startup_url", "https://duckduckgo.com"))
     parsed = urlparse(startup_url)
     if parsed.scheme not in ("http", "https"): startup_url = "https://duckduckgo.com"
@@ -1133,7 +1178,6 @@ def get_launch_config():
             "navigator.language": {language!r},
             "navigator.languages": {languages!r},
             "headers.Accept-Language": {accept_language!r},
-            "headers.User-Agent": {user_agent!r},
             "screen.width": {screen_width},
             "screen.height": {screen_height},
             "screen.availWidth": {avail_width},
@@ -1285,14 +1329,16 @@ class CamoufoxGUI(tk.Tk):
 
         # Derived paths
         self.venv_dir = DEFAULT_VENV
-
+        
+        self.update_tag = None
         self.build_styles()
         self.build_layout()
 
         # Periodic tasks
         self.after(100, self.process_logs)
         self.after(1000, self.refresh_status)
-
+        self.after(3000, self.check_updates)
+        
         self.refresh_profiles()
         self.show_page("dashboard")
 
@@ -2414,7 +2460,7 @@ class CamoufoxGUI(tk.Tk):
         lang.grid(row=3, column=0, sticky="nsew", padx=(0, 4), pady=5)
         row(body, "Language", "navigator.language", "en-US", width=18)
         row(body, "Languages", "navigator.languages", "en-US, en", width=18)
-        row(body, "Accept-Language", "headers.Accept-Language", "en-US,en;q=0.9", width=18)
+        row(body, "Accept-Language", "headers.Accept-Language", "en-US,en;q=0.5", width=18)
 
         window, body = card(grid, "Browser Window")
         window.grid(row=3, column=1, sticky="nsew", padx=(4, 0), pady=5)
@@ -2436,10 +2482,6 @@ class CamoufoxGUI(tk.Tk):
                 ttk.Entry(cell, textvariable=variable, width=12).pack(fill="x", pady=(1, 0))
         screen_row([("Width", "screen.width", "1700"), ("Height", "screen.height", "970"), ("Avail width", "screen.availWidth", "1700")])
         screen_row([("Avail height", "screen.availHeight", "940"), ("Color depth", "screen.colorDepth", "24"), ("Pixel depth", "screen.pixelDepth", "24")])
-
-        identity, body = card(grid, "Browser Identity")
-        identity.grid(row=5, column=0, columnspan=2, sticky="ew", pady=5)
-        row(body, "User-Agent", "headers.User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0")
 
         paths, body = card(grid, "Paths")
         paths.grid(row=6, column=0, columnspan=2, sticky="ew", pady=5)
@@ -2548,8 +2590,7 @@ class CamoufoxGUI(tk.Tk):
             language, languages = language_data
             self.fp_vars["navigator.language"].set(language)
             self.fp_vars["navigator.languages"].set(", ".join(languages))
-            self.fp_vars["headers.Accept-Language"].set(
-                ",".join([f"{languages[0]};q=1.0"] + [f"{lang};q=0.9" for lang in languages[1:]]))
+            self.fp_vars["headers.Accept-Language"].set(accept_language_for(languages))
         self.log(f"[FINGERPRINT] Coordinates detected for {timezone}: {latitude}, {longitude}")
 
     def reset_fingerprint(self):
@@ -2563,65 +2604,16 @@ class CamoufoxGUI(tk.Tk):
             messagebox.showwarning("No profile", "Open a profile fingerprint first.")
             return
 
-        # --- OS ---
         os_choice = random.choice(OS_OPTIONS)
+        locale, timezone = random.choice(REGIONS)
+        language, languages = LOCALE_TO_LANGUAGE[locale]
+        lat, lon = TIMEZONE_COORDINATES[timezone]
+        lat = round(lat + random.uniform(-0.15, 0.15), 4)
+        lon = round(lon + random.uniform(-0.15, 0.15), 4)
 
-        # --- Locale + languages ---
-        locale = random.choice(LOCALE_OPTIONS)
-        lang_data = LOCALE_TO_LANGUAGE.get(locale, ("en-US", ["en-US", "en"]))
-        language, languages = lang_data
-        accept_language = ",".join(
-            [f"{languages[0]};q=1.0"] + [f"{lang};q=0.9" for lang in languages[1:]]
-        )
-
-        # --- Timezone + coordinates ---
-        timezone = random.choice(TIMEZONE_OPTIONS)
-        if timezone in TIMEZONE_COORDINATES:
-            lat, lon = TIMEZONE_COORDINATES[timezone]
-            lat = round(lat + random.uniform(-0.25, 0.25), 4)
-            lon = round(lon + random.uniform(-0.25, 0.25), 4)
-        else:
-            lat, lon = 0.0, 0.0
-
-        # --- Hardware ---
-        hw = random.choice([2, 4, 6, 8, 12, 16])
-
-        # --- Screen & Window ---
-        screens = [
-            (1920, 1080, 1920, 1040),
-            (2560, 1440, 2560, 1400),
-            (1366, 768, 1366, 728),
-            (1536, 864, 1536, 824),
-            (1440, 900, 1440, 860),
-            (1680, 1050, 1680, 1010),
-            (1280, 800, 1280, 760),
-            (1700, 970, 1700, 940),
-            (1600, 900, 1600, 860),
-            (2560, 1080, 2560, 1040),
-        ]
-        sw, sh, aw, ah = random.choice(screens)
-        ww = sw - random.randint(0, 48)
-        wh = sh - random.randint(30, 90)
-
-        # --- User-Agent for OS ---
-        uas = {
-            "windows": [
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:153.0) Gecko/20100101 Firefox/153.0",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:154.0) Gecko/20100101 Firefox/154.0",
-            ],
-            "macos": [
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:152.0) Gecko/20100101 Firefox/152.0",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 13.6; rv:153.0) Gecko/20100101 Firefox/153.0",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 12.7; rv:154.0) Gecko/20100101 Firefox/154.0",
-            ],
-            "linux": [
-                "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0",
-                "Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0",
-                "Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 Firefox/154.0",
-            ],
-        }
-        ua = random.choice(uas.get(os_choice, uas["windows"]))
+        sw, sh, aw, ah = random.choice(SCREENS_BY_OS[os_choice])
+        ww = aw - random.randint(0, 48)
+        wh = ah - random.randint(0, 60)
 
         mapping = {
             "os": os_choice,
@@ -2631,8 +2623,8 @@ class CamoufoxGUI(tk.Tk):
             "longitude": str(lon),
             "navigator.language": language,
             "navigator.languages": ", ".join(languages),
-            "headers.Accept-Language": accept_language,
-            "navigator.hardwareConcurrency": str(hw),
+            "headers.Accept-Language": accept_language_for(languages),
+            "navigator.hardwareConcurrency": str(random.choice(CORES_BY_OS[os_choice])),
             "screen.width": str(sw),
             "screen.height": str(sh),
             "screen.availWidth": str(aw),
@@ -2641,14 +2633,14 @@ class CamoufoxGUI(tk.Tk):
             "screen.pixelDepth": "24",
             "window.width": str(ww),
             "window.height": str(wh),
-            "headers.User-Agent": ua,
         }
-
         for key, value in mapping.items():
             if key in self.fp_vars:
                 self.fp_vars[key].set(value)
 
-        self.log(f"[FINGERPRINT] Randomized values for {self.active_profile_name}")
+        if self.fp_vars.get("proxy.server") and self.fp_vars["proxy.server"].get().strip():
+            self.log("[FINGERPRINT] Proxy is set: the region should match the proxy's country.")
+        self.log(f"[FINGERPRINT] Randomized {self.active_profile_name}: {locale}, {timezone}, {os_choice}")
 
     def save_fingerprint(self):
         """Read all Simple-mode widgets and persist them to the profile."""
@@ -2781,6 +2773,34 @@ class CamoufoxGUI(tk.Tk):
                                             filetypes=[("Log files", "*.log"), ("Text files", "*.txt"), ("All files", "*.*")])
         if path: write_text(Path(path), self.log_text.get("1.0", tk.END))
 
+    def check_updates(self):
+        """Check for a new Camoufox release at most once per 24 h; notify only."""
+        self.after(24 * 3600 * 1000, self.check_updates)
+        channel = self.channel_var.get()
+
+        try:
+            state = json.loads(read_text(UPDATE_STATE) or "{}")
+        except Exception:
+            state = {}
+        if state.get("channel") == channel and time.time() - state.get("checked", 0) < 86400:
+            self.update_tag = state.get("tag")
+            return
+
+        def worker():
+            try:
+                tag = fetch_latest_tag(channel)
+            except Exception as exc:
+                self.log(f"[SETUP] Update check skipped: {exc}")
+                return
+            write_text(UPDATE_STATE, json.dumps(
+                {"checked": time.time(), "channel": channel, "tag": tag}))
+            self.update_tag = tag
+            installed = version_from_cache(channel)
+            if tag and installed and tag != installed:
+                self.log(f"[SETUP] New Camoufox release: {tag} (installed {installed}). "
+                         f"Run Setup → step 3 to update.")
+
+        threading.Thread(target=worker, daemon=True).start()
     # --------------------------------------------------------
     # Status & helpers
     # --------------------------------------------------------
@@ -2803,7 +2823,10 @@ class CamoufoxGUI(tk.Tk):
             self.sidebar_status.configure(fg=COLORS["muted"])
 
         version = version_from_cache(self.channel_var.get())
-        self.version_var.set(version or "Not found")
+        text = version or "Not found"
+        if version and self.update_tag and self.update_tag != version:
+            text += f"  ⬆ {self.update_tag}"
+        self.version_var.set(text)
         self.after(1000, self.refresh_status)
 
     def form_entry(self, parent, label, value="", variable=None, panel=False):
